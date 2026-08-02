@@ -1,0 +1,95 @@
+local tool = script.Parent
+local remoteEvent = tool:WaitForChild("LaserEvent")
+
+local MODES = {
+	{ Color = Color3.fromRGB(255, 0, 0), Type = "Damage", Value = 1.5 },
+	{ Color = Color3.fromRGB(0, 255, 0), Type = "Heal", Value = 1.5 },
+	{ Color = Color3.fromRGB(0, 150, 255), Type = "Push", Value = 80 }
+}
+
+local currentModeIndex = 1
+local activeLasers = {}
+local targetPositions = {}
+
+local function createLaserPart()
+	local part = Instance.new("Part")
+	part.Name = "LaserPointerBeam"
+	part.Anchored = true
+	part.CanCollide = false
+	part.Material = Enum.Material.Neon
+	part.Size = Vector3.new(0.2, 0.2, 1)
+	part.Parent = workspace
+	return part
+end
+
+remoteEvent.OnServerEvent:Connect(function(player, action, param)
+	local character = player.Character
+	if not character then return end
+
+	if action == "Equip" then
+		if not activeLasers[player] then
+			activeLasers[player] = createLaserPart()
+		end
+	elseif action == "Unequip" then
+		if activeLasers[player] then
+			activeLasers[player]:Destroy()
+			activeLasers[player] = nil
+		end
+	elseif action == "UpdateTarget" then
+		targetPositions[player] = param
+	elseif action == "Click" then
+		currentModeIndex = (currentModeIndex % #MODES) + 1
+	end
+end)
+
+-- ทำงานแบบ Loop แสดงผลและคำนวณเอฟเฟกต์
+task.spawn(function()
+	while true do
+		task.wait(0.05)
+		for player, laserPart in pairs(activeLasers) do
+			local character = player.Character
+			local targetPos = targetPositions[player]
+
+			if character and targetPos and laserPart and laserPart.Parent then
+				local originPart = character:FindFirstChild("RightHand") 
+					or character:FindFirstChild("Right Arm") 
+					or character:FindFirstChild("HumanoidRootPart")
+
+				if originPart then
+					local startPos = originPart.Position
+					local distance = (targetPos - startPos).Magnitude
+					local mode = MODES[currentModeIndex]
+
+					laserPart.Color = mode.Color
+					laserPart.Size = Vector3.new(0.2, 0.2, distance)
+					laserPart.CFrame = CFrame.new(startPos, targetPos) * CFrame.new(0, 0, -distance / 2)
+
+					-- Raycast แบบกันไม่ให้ยิงโดนตัวผู้เล่นเอง
+					local raycastParams = RaycastParams.new()
+					raycastParams.FilterDescendantsInstances = {character, laserPart}
+					raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+					local rayResult = workspace:Raycast(startPos, (targetPos - startPos).Unit * distance, raycastParams)
+
+					if rayResult and rayResult.Instance then
+						local hitModel = rayResult.Instance:FindFirstAncestorOfClass("Model")
+						if hitModel and hitModel ~= character then
+							local humanoid = hitModel:FindFirstChildOfClass("Humanoid")
+							local hrp = hitModel:FindFirstChild("HumanoidRootPart")
+
+							if humanoid then
+								if mode.Type == "Damage" then
+									humanoid:TakeDamage(mode.Value)
+								elseif mode.Type == "Heal" then
+									humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + mode.Value)
+								elseif mode.Type == "Push" and hrp then
+									hrp.AssemblyLinearVelocity = (targetPos - startPos).Unit * mode.Value
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+end)
