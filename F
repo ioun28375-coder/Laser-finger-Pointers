@@ -1,0 +1,19 @@
+local tool = script.Parent
+
+-- สั่งให้ตัวละครหยิบ Tool นี้อัตโนมัติเมื่อเกิดใหม่
+tool.Equipped:Connect(function()
+	-- ทำงานเมื่อถูกหยิบ
+end)
+
+-- ใช้เหตุการณ์ตอนที่ Tool ถูกใส่เข้าไปในตัวละคร (Character)
+tool.ParentChanged:Connect(function(newParent)
+	if newParent and newParent:IsA("Model") then
+		local humanoid = newParent:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			-- บังคับให้ Humanoid สวมใส่ Tool นี้ทันที
+			task.defer(function()
+				humanoid:EquipTool(tool)
+			end)
+		end
+	end
+end)
